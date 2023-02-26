@@ -105,3 +105,20 @@ body {
 .days {
   color: #3895ff !important;
 }
+.sub-container {
+  display: flex;
+  align-items: center;
+  gap: auto;
+  margin: 5%;
+}
+.modifyElem {
+  width: 50%;
+  border: 1px solid #dbdbdb;
+  border-radius: 5px;
+  padding: 10px 30px 30px 30px;
+}
+.re-btn {
+  position: absolute;
+  right: 1em;
+  top: 4.5em;
+}

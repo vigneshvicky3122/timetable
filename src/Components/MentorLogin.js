@@ -5,7 +5,7 @@ import axios from "axios";
 import { useFormik } from "formik";
 import * as yup from "yup";
 
-function Login() {
+function MentorLogin() {
   let navigate = useNavigate();
 
   let handleSubmit = async (data) => {
@@ -13,7 +13,7 @@ function Login() {
       let request = await axios.post(`${url}/login`, data);
       if (request.data.statusCode === 200) {
         window.localStorage.setItem("app-token", request.data.token);
-        navigate("/admin")
+        navigate("/mentor/timetable");
       }
       if (request.data.statusCode === 404) {
         window.alert(request.data.message);
@@ -45,7 +45,7 @@ function Login() {
       <div className="forms">
         <form className="login-form" onSubmit={formik.handleSubmit}>
           <br />
-          <h1>ADMIN</h1>
+          <h1>MENTOR'S LOGIN</h1>
           <br />
           <div className="form-groups">
             <label htmlFor="name">Email</label>
@@ -93,4 +93,4 @@ function Login() {
   );
 }
 
-export default Login;
+export default MentorLogin;
