@@ -6,6 +6,7 @@ const bodyParser = require("body-parser");
 const PORT = process.env.PORT || 8000;
 const router = express();
 const { hashPassword, hashCompare } = require("./hashPassword");
+const { authentication, createToken } = require("./auth");
 const { mailer } = require("./nodeMail");
 const { MongoClient, ObjectId } = require("mongodb");
 const Client = new MongoClient(process.env.DB_URL);
@@ -19,10 +20,11 @@ router.use(
 
 router.get("/timetable", async (req, res) => {
   await Client.connect();
+
   const Db = Client.db(process.env.DB_NAME);
   try {
     const tableData = await Db.collection(process.env.DB_COLLECTION_ONE)
-      .find()
+      .find({ year: req.headers.year, division: req.headers.division })
       .toArray();
     if (tableData) {
       res.json({
@@ -45,15 +47,111 @@ router.get("/timetable", async (req, res) => {
     await Client.close();
   }
 });
+router.get("/getData", async (req, res) => {
+  await Client.connect();
+
+  const Db = Client.db(process.env.DB_NAME);
+  try {
+    const subject = await Db.collection(process.env.DB_COLLECTION_ONE)
+      .find()
+      .toArray();
+    const mentor = await Db.collection(process.env.DB_COLLECTION_TWO)
+      .find()
+      .toArray();
+    if (mentor) {
+      res.json({
+        statusCode: 200,
+        subject,
+        mentor,
+      });
+    } else {
+      res.json({
+        statusCode: 404,
+        message: "failed to find",
+      });
+    }
+  } catch (error) {
+    console.log(error);
+    res.json({
+      statusCode: 500,
+      message: "Internal Server Error",
+    });
+  } finally {
+    await Client.close();
+  }
+});
+router.get("/mentor", async (req, res) => {
+  await Client.connect();
+  const Db = Client.db(process.env.DB_NAME);
+  console.log(req.headers.subject_id);
+  try {
+    const tableData = await Db.collection(process.env.DB_COLLECTION_TWO)
+      .find({
+        subjectId: req.headers.subject_id,
+      })
+      .toArray();
+    if (tableData) {
+      res.json({
+        statusCode: 200,
+        tableData,
+      });
+    } else {
+      res.json({
+        statusCode: 404,
+        message: "failed to find",
+      });
+    }
+  } catch (error) {
+    console.log(error);
+    res.json({
+      statusCode: 500,
+      message: "Internal Server Error",
+    });
+  } finally {
+    await Client.close();
+  }
+});
+router.put("/modified", async (req, res) => {
+  await Client.connect();
+  console.log(req.body);
+  try {
+    const Db = Client.db(process.env.DB_NAME);
+    const result = await Db.collection(
+      process.env.DB_COLLECTION_ONE
+    ).findOneAndUpdate(
+      { day: req.body.Day },
+      { $set: { periods: { [req.body.Period]: req.body.SubjectId } } }
+    );
+    if (result) {
+      res.json({ statusCode: 200, message: "Re-Assigned" });
+    } else {
+      res.json({ statusCode: 404, message: "retry" });
+    }
+  } catch (error) {
+    console.log(error);
+    res.status(500).send("internal error");
+  } finally {
+    await Client.close();
+  }
+});
 router.put("/re-generate", async (req, res) => {
   await Client.connect();
 
   try {
     const Db = Client.db(process.env.DB_NAME);
-    const removeOldData = await Db.collection(process.env.DB_COLLECTION_ONE).deleteMany();
+    const removeOldData = await Db.collection(
+      process.env.DB_COLLECTION_ONE
+    ).deleteMany();
     if (removeOldData) {
-
-      const insertNewData = await Db.collection(process.env.DB_COLLECTION_ONE).insertMany([{ day: "Monday", periods: req.body.monday }, { day: "Tuesday", periods: req.body.tuesday }, { day: "Wednesday", periods: req.body.wednesday }, { day: "Thursday", periods: req.body.thursday }, { day: 'Friday', periods: req.body.friday }]);
+      const insertNewData = await Db.collection(
+        process.env.DB_COLLECTION_ONE
+      ).insertMany([
+        { day: "Monday", periods: req.body.monday },
+        { day: "Tuesday", periods: req.body.tuesday },
+        { day: "Wednesday", periods: req.body.wednesday },
+        { day: "Thursday", periods: req.body.thursday },
+        { day: "Friday", periods: req.body.friday },
+      ]);
       if (insertNewData) {
         res.json({ statusCode: 200, message: "Re-schedule successfully" });
       }
@@ -81,11 +179,9 @@ router.post("/login", async (req, res) => {
       let hashResult = await hashCompare(req.body.password, user[0].password);
 
       if (hashResult) {
-
         res.json({
           statusCode: 200,
           message: "Login successful",
-
         });
       } else {
         res.json({
@@ -100,6 +196,78 @@ router.post("/login", async (req, res) => {
       });
     }
   } catch {
+    res.json({
+      statusCode: 500,
+      message: "Internal server error",
+    });
+  } finally {
+    await Client.close();
+  }
+});
+router.post("/create-mentor", async (req, res) => {
+  await Client.connect();
+  try {
+    const db = Client.db(process.env.DB_NAME);
+    let users = await db
+      .collection(process.env.DB_COLLECTION_TWO)
+      .find({ email: req.body.email })
+      .toArray();
+
+    if (users.length === 0) {
+      let hashedPassword = await hashPassword(req.body.password);
+
+      if (hashedPassword) {
+        let SubRandom = [];
+        let splitSub = req.body.subject.split(",");
+
+        if (splitSub.length >= 1) {
+          for (let index = 0; index < splitSub.length; index++) {
+            var chars = splitSub[index];
+            var string_length = 6;
+            var randomString = "";
+
+            for (var i = 0; i < string_length; i++) {
+              var rNum = Math.floor(Math.random() * chars.length);
+              randomString += chars[rNum];
+            }
+
+            SubRandom.push({
+              subjectName: splitSub[index],
+              subjectId: randomString,
+            });
+          }
+
+          if (SubRandom) {
+            let user = await db
+              .collection(process.env.DB_COLLECTION_TWO)
+              .insertOne({
+                name: req.body.name,
+                email: req.body.email,
+                password: hashedPassword,
+                subjects: SubRandom,
+                timetable: [],
+              });
+            if (user) {
+              res.json({
+                statusCode: 200,
+                message: "Added",
+              });
+            }
+          }
+        }
+      } else {
+        res.json({
+          statusCode: 404,
+          message: "password not found",
+        });
+      }
+    } else {
+      res.json({
+        statusCode: 401,
+        message: "User was already exist, please Login...",
+      });
+    }
+  } catch (error) {
     res.json({
       statusCode: 500,
       message: "Internal server error",
